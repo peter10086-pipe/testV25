@@ -530,14 +530,14 @@ func FullMesh(c *gin.Context) {
 
 			}(v,tempArray,&ret)
 		}
-		mtex.Wait()
+
 
 	}
 
 	//登录所有ip
 
 
-
+	mtex.Wait()
 
 
 	c.JSON(http.StatusOK, gin.H{
