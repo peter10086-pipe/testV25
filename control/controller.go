@@ -301,7 +301,7 @@ func (u *UCloudEnv) ListCubePod() error {
 
 	}
 
-	//u.GetCubeExtendInfo(pods)
+	u.GetCubeExtendInfo(pods)
 
 	for i, v := range mapIps {
 
