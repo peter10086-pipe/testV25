@@ -15,6 +15,7 @@ import (
 	ulog "github.com/ucloud/ucloud-sdk-go/ucloud/log"
 	"github.com/ucloud/ucloud-sdk-go/ucloud/request"
 	"github.com/ucloud/ucloud-sdk-go/ucloud/response"
+	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v2"
 	"net/http"
 	"net/rpc"
@@ -54,7 +55,8 @@ type  UCloudEnv struct {
 	ulog.Logger
 	cub            *cu.CubeClient
 	cubes          map[string]*PodDetailInfo
-	vpcfego          *VpcfeClient
+	vpcfego         *VpcfeClient
+	Cliens         map[string]*ssh.Session
 
 }
 
@@ -457,10 +459,6 @@ func FullMesh(c *gin.Context) {
 
 			//初始化远程
 
-
-		switch i%3 {
-
-		case 0:
 			go func(ip string,ips []string, res *int){
 			defer mtex.Done()
 			rpc, err := rpc.DialHTTP("tcp","10.2.122.25:8082")
@@ -483,53 +481,53 @@ func FullMesh(c *gin.Context) {
 				//执行远程调用
 
 			}(v,tempArray,&ret)
-		case 1:
-			go func(ip string,ips []string, res *int){
-				defer mtex.Done()
-				rpc, err := rpc.DialHTTP("tcp","10.2.202.109:8082")
-				if err !=nil{
-
-					c.JSON(http.StatusBadRequest, gin.H{
-						"retcode": "-1",
-						"message":err.Error(),
-					})
-				}
-
-				err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{ip,ips}, &res)
-
-				if err1 != nil {
-					c.JSON(http.StatusBadRequest, gin.H{
-						"retcode": "-1",
-						"message":err1.Error(),
-					})
-				}
-				//执行远程调用
-
-			}(v,tempArray,&ret)
-		case 2:
-			go func(ip string,ips []string, res *int){
-				defer mtex.Done()
-				rpc, err := rpc.DialHTTP("tcp","10.2.7.222:8082")
-				if err !=nil{
-
-					c.JSON(http.StatusBadRequest, gin.H{
-						"retcode": "-1",
-						"message":err.Error(),
-					})
-				}
-
-				err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{ip,ips}, &res)
-
-				if err1 != nil {
-					c.JSON(http.StatusBadRequest, gin.H{
-						"retcode": "-1",
-						"message":err1.Error(),
-					})
-				}
-				//执行远程调用
-
-			}(v,tempArray,&ret)
-		}
+		//case 1:
+		//	go func(ip string,ips []string, res *int){
+		//		defer mtex.Done()
+		//		rpc, err := rpc.DialHTTP("tcp","10.2.202.109:8082")
+		//		if err !=nil{
+		//
+		//			c.JSON(http.StatusBadRequest, gin.H{
+		//				"retcode": "-1",
+		//				"message":err.Error(),
+		//			})
+		//		}
+		//
+		//		err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{ip,ips}, &res)
+		//
+		//		if err1 != nil {
+		//			c.JSON(http.StatusBadRequest, gin.H{
+		//				"retcode": "-1",
+		//				"message":err1.Error(),
+		//			})
+		//		}
+		//		//执行远程调用
+		//
+		//	}(v,tempArray,&ret)
+		//case 2:
+		//	go func(ip string,ips []string, res *int){
+		//		defer mtex.Done()
+		//		rpc, err := rpc.DialHTTP("tcp","10.2.7.222:8082")
+		//		if err !=nil{
+		//
+		//			c.JSON(http.StatusBadRequest, gin.H{
+		//				"retcode": "-1",
+		//				"message":err.Error(),
+		//			})
+		//		}
+		//
+		//		err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{ip,ips}, &res)
+		//
+		//		if err1 != nil {
+		//			c.JSON(http.StatusBadRequest, gin.H{
+		//				"retcode": "-1",
+		//				"message":err1.Error(),
+		//			})
+		//		}
+		//		//执行远程调用
+		//
+		//	}(v,tempArray,&ret)
+		//}
 
 
 	}
