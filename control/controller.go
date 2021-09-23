@@ -452,14 +452,14 @@ func FullMesh(c *gin.Context) {
 
 	ret := 0
 	var mtex sync.WaitGroup
-	for i, v:= range tempArray {
+//	for i, v:= range tempArray {
 		mtex.Add(1)
 
-		fmt.Println("current ip:",i,v)
+	//	fmt.Println("current ip:",i,v)
 
 			//初始化远程
 
-			go func(ip string,ips []string, res *int){
+			go func(ips []string, res *int){
 			defer mtex.Done()
 			rpc, err := rpc.DialHTTP("tcp","10.2.122.25:8082")
 			if err !=nil{
@@ -470,7 +470,7 @@ func FullMesh(c *gin.Context) {
 				})
 			}
 
-				err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{ip,ips}, &res)
+				err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{"",ips}, &res)
 
 				if err1 != nil {
 					c.JSON(http.StatusBadRequest, gin.H{
@@ -480,7 +480,7 @@ func FullMesh(c *gin.Context) {
 				}
 				//执行远程调用
 
-			}(v,tempArray,&ret)
+			}(tempArray,&ret)
 		//case 1:
 		//	go func(ip string,ips []string, res *int){
 		//		defer mtex.Done()
@@ -530,7 +530,7 @@ func FullMesh(c *gin.Context) {
 		//}
 
 
-	}
+	//}
 
 	//登录所有ip
 
