@@ -301,7 +301,7 @@ func (u *UCloudEnv) ListCubePod() error {
 
 	}
 
-	u.GetCubeExtendInfo(pods)
+	//u.GetCubeExtendInfo(pods)
 
 	for i, v := range mapIps {
 
@@ -309,26 +309,26 @@ func (u *UCloudEnv) ListCubePod() error {
 		u.cubes[i].CreateTime = v.CreateTime
 		u.cubes[i].RunningTime = v.RunningTime
 	}
-    var mtex1 sync.WaitGroup
-	var mloc sync.RWMutex
-	for _, v := range u.cubes {
-		mtex1.Add(1)
+    //var mtex1 sync.WaitGroup
+	//var mloc sync.RWMutex
+	//for _, v := range u.cubes {
+	//	mtex1.Add(1)
+	//
+	//	go func( pod *PodDetailInfo){
+	//		defer mtex1.Done()
+	//		mac, err := u.IGetIpInfoByObject(v.CubeId)
+	//		if err != nil {
+	//			u.Errorf("IGetIpInfoByObject:", err)
+	//		}
+	//		mloc.Lock()
+	//		u.cubes[v.CubeId].Mac = mac
+	//		u.Infof("%v,%v,%v,%v,%v,%v", v.IP, v.CubeId, v.EIP.IP, v.CreateTime, v.RunningTime, mac)
+	//		mloc.Unlock()
+	//	}(v)
+	//
+	//}
 
-		go func( pod *PodDetailInfo){
-			defer mtex1.Done()
-			mac, err := u.IGetIpInfoByObject(v.CubeId)
-			if err != nil {
-				u.Errorf("IGetIpInfoByObject:", err)
-			}
-			mloc.Lock()
-			u.cubes[v.CubeId].Mac = mac
-			u.Infof("%v,%v,%v,%v,%v,%v", v.IP, v.CubeId, v.EIP.IP, v.CreateTime, v.RunningTime, mac)
-			mloc.Unlock()
-		}(v)
-
-	}
-
-	mtex1.Wait()
+	//mtex1.Wait()
 
 	//u.Infof("%v,%v,%v,%v", u.cubes)
 
