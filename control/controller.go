@@ -383,7 +383,7 @@ func CreateCubePod(c *gin.Context ) {
 	//更新主机信息
 	var mtx sync.WaitGroup
 	mtx.Add(1)
-	for i:=0;i<50;i++{
+	for i:=0;i<10;i++{
 		defer mtx.Done()
 
 		go func(){
@@ -461,7 +461,7 @@ func FullMesh(c *gin.Context) {
 		switch i%3 {
 
 		case 0:
-			go func(){
+			go func(ip string,ips []string, res *int){
 			defer mtex.Done()
 			rpc, err := rpc.DialHTTP("tcp","10.2.122.25:8082")
 			if err !=nil{
@@ -472,7 +472,7 @@ func FullMesh(c *gin.Context) {
 				})
 			}
 
-				err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{v,tempArray}, &ret)
+				err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{ip,ips}, &res)
 
 				if err1 != nil {
 					c.JSON(http.StatusBadRequest, gin.H{
@@ -482,36 +482,32 @@ func FullMesh(c *gin.Context) {
 				}
 				//执行远程调用
 
-				fmt.Println(ret)
-			}()
+			}(v,tempArray,&ret)
 		case 1:
-			go func(){
+			go func(ip string,ips []string, res *int){
 				defer mtex.Done()
-			rpc, err := rpc.DialHTTP("tcp","10.2.202.109:8082")
-			if err !=nil{
+				rpc, err := rpc.DialHTTP("tcp","10.2.202.109:8082")
+				if err !=nil{
 
-				c.JSON(http.StatusBadRequest, gin.H{
-					"retcode": "-1",
-					"message":err.Error(),
-				})
-			}
-			fmt.Println(v)
-			fmt.Println(tempArray)
-			err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{v,tempArray}, &ret)
+					c.JSON(http.StatusBadRequest, gin.H{
+						"retcode": "-1",
+						"message":err.Error(),
+					})
+				}
 
-			if err1 != nil {
+				err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{ip,ips}, &res)
 
-				c.JSON(http.StatusBadRequest, gin.H{
-					"retcode": "-1",
-					"message":err1.Error(),
-				})
-			}
-			//执行远程调用
+				if err1 != nil {
+					c.JSON(http.StatusBadRequest, gin.H{
+						"retcode": "-1",
+						"message":err1.Error(),
+					})
+				}
+				//执行远程调用
 
-			fmt.Println(ret)
-			}()
+			}(v,tempArray,&ret)
 		case 2:
-			go func(){
+			go func(ip string,ips []string, res *int){
 				defer mtex.Done()
 				rpc, err := rpc.DialHTTP("tcp","10.2.7.222:8082")
 				if err !=nil{
@@ -521,10 +517,10 @@ func FullMesh(c *gin.Context) {
 						"message":err.Error(),
 					})
 				}
-				err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{v,tempArray}, &ret)
+
+				err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{ip,ips}, &res)
 
 				if err1 != nil {
-
 					c.JSON(http.StatusBadRequest, gin.H{
 						"retcode": "-1",
 						"message":err1.Error(),
@@ -532,8 +528,7 @@ func FullMesh(c *gin.Context) {
 				}
 				//执行远程调用
 
-				fmt.Println(ret)
-			}()
+			}(v,tempArray,&ret)
 		}
 		mtex.Wait()
 
