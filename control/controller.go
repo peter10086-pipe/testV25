@@ -384,11 +384,10 @@ func CreateCubePod(c *gin.Context ) {
 	req.Zone = ucloud.String("cn-sh2-01")
 	//更新主机信息
 	var mtx sync.WaitGroup
-	mtx.Add(1)
 	for i:=0;i<10;i++{
-		defer mtx.Done()
-
+		mtx.Add(1)
 		go func(){
+			defer mtx.Done()
 			resp, err := u.cub.CreateCubePod(req)
 
 			u.Infof("resp %v %s ",err,resp)
