@@ -6,8 +6,12 @@ import "testV25/control"
 
 func main() {
 	r := gin.Default()
-
-	r.GET("/ping",control.FullMesh)
-	r.GET("/create",control.CreateCubePod)
+	r.POST("/CreatePod",control.CreateCubePod)
+	r.POST("/CreateHost",control.CreateHost)
+	r.POST("/PodGray",control.Gray)
+	//r.GET("/addGray",control.AddGrayForMac)
+	//r.GET("/addGray",control.AddFlowForMac)
+	r.POST("/HostFullMesh",control.PingHost)
+	r.POST("/PodFullMesh",control.PodFullMesh)
 	r.Run() // listen and serve on 0.0.0.0:8080
 }

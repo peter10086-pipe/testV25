@@ -10,6 +10,8 @@ import (
 	"github.com/parnurzeal/gorequest"
 	"github.com/sirupsen/logrus"
 	cu "github.com/ucloud/ucloud-sdk-go/services/cube"
+	"github.com/ucloud/ucloud-sdk-go/services/uhost"
+	h "github.com/ucloud/ucloud-sdk-go/services/uhost"
 	"github.com/ucloud/ucloud-sdk-go/ucloud"
 	"github.com/ucloud/ucloud-sdk-go/ucloud/auth"
 	ulog "github.com/ucloud/ucloud-sdk-go/ucloud/log"
@@ -17,30 +19,239 @@ import (
 	"github.com/ucloud/ucloud-sdk-go/ucloud/response"
 	"golang.org/x/crypto/ssh"
 	"gopkg.in/yaml.v2"
+	"io/ioutil"
+	"math/rand"
 	"net/http"
 	"net/rpc"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
+	host "testV25/host"
 )
 
 const (
 	backend      = "UVPCFEGO"
+	url          = "http://api.ucloud.cn"
 	internal     = "http://internal.api.ucloud.cn/"
 	preInternal  = "http://internal.api.pre.ucloudadmin.com"
 	pre2Internal = "http://10.64.76.5"
 )
 
 type (
+	UCloudEnv struct {
+		ulog.Logger
+		Region string
+		Zone  string
+		cub            *cu.CubeClient
+		uhost           *host.UHostClient
+		hosts          map[string]*uhost.UHostInstanceSet
+		host           *h.UHostClient
+		cubes          map[string]*PodDetailInfo
+		vpcfego         *VpcfeClient
+		Cliens         map[string]*ssh.Session
+		VPCId          string
+		SubnetId       string
+		HostIp         string
+		SetId          string
+		ImageId        string
+		SecurityGroupId string
+		PublicKey        string
+		PrivateKey      string
+		ProjectId       string
+		Count           string
+	}
+	TestInfo struct {
+		ulog.Logger
+		Region	string
+		Zone    string
+		ProjectId string
+		PubK string
+		PriK string
+		VPCId string
+		SubnetId string
+		ImageId string
+	}
+
+)
+
+
+var u *UCloudEnv
+//func init(){
+//	u = NewUCloudEnv()
+//}
+
+func (u *UCloudEnv) NewUCloudEnv() *UCloudEnv {
+	config := ucloud.NewConfig()
+	config.BaseUrl = url
+	config.Region = u.Region
+	config.Zone =  u.Zone
+	config.ProjectId =u.ProjectId//"org-0x4kng"
+
+	if lvl, e := logrus.ParseLevel("debug"); e != nil {
+		panic(e)
+	} else {
+		config.LogLevel = ulog.Level(lvl)
+	}
+
+	credential := auth.NewCredential()
+	credential.PrivateKey = u.PrivateKey//PubK//"EPToanhc560W5FzG1Zbq0QQK3h3kkf7hDOFyCv59SbCj68D9rOKp5sFzern9ULS5"
+	credential.PublicKey = u.PublicKey//"gik0jB0CNWWgIbHrIr6ig3kIxrc0IoqTvu/huqf9u0ZRxA/8FEFUnxq7zOia8m2g"
+
+
+	u = &UCloudEnv{
+		Logger:       ulog.New(), // ulog.New(),
+		cub:          cu.NewClient(&config,&credential),
+		hosts:        make(map[string]*uhost.UHostInstanceSet),
+		vpcfego:      NewVPCClient(&config,&credential),
+		uhost:	      host.NewClient(&config,&credential),
+		host:		  h.NewClient(&config,&credential),
+		cubes:        make(map[string]*PodDetailInfo),
+		VPCId :         u.VPCId,
+		SubnetId  :     u.SubnetId,
+		HostIp  :       u.HostIp,
+		SetId  :        u.SetId,
+		ImageId :       u.ImageId,
+		SecurityGroupId: u.SecurityGroupId,
+		PublicKey   :     u.PublicKey,
+		PrivateKey  :    u.PrivateKey,
+		ProjectId   :    u.ProjectId,
+		Count      :     u.Count,
+
+	}
+	fmt.Println(u)
+	return u
+}
+
+
+func (u *UCloudEnv) describeHost(id string) []uhost.UHostInstanceSet {
+	req := u.host.NewDescribeUHostInstanceRequest()
+	//req.SetRetryable(true)
+	//req.SetRetryCount(10)
+	req.Tag = ucloud.String("vpc25")
+	req.Zone = ucloud.String("")
+	if id != "" {
+		req.UHostIds = []string{id}
+	}
+	req.Limit = ucloud.Int(10000)
+	req.Offset = ucloud.Int(0)
+
+	for i := 0; i <= 60; i++ {
+		resp, e := u.host.DescribeUHostInstance(req)
+		if e != nil {
+			//FailF(e, "DescribeUHostInstance")
+			continue
+		} else {
+			return resp.UHostSet
+		}
+	}
+
+	return nil
+}
+
+
+func (u *UCloudEnv) CreateHost() error{
+	req := u.uhost.NewCreateUHostInstanceRequest()
+	req.SetRetryCount(10)
+	req.SetRetryable(true)
+	req.WithTimeout(time.Second * 60)
+
+	req.Tag = ucloud.String("vpc25")
+	////if image := u.DescribeImage(); image != "" {
+	//	req.ImageId = ucloud.String("")
+	////} else {
+	if u.ImageId == ""{
+		req.ImageId = ucloud.String("uimage-gxl5au")
+	}else{
+		req.ImageId = ucloud.String(u.ImageId)
+	}
+	////}
+	req.MinimalCpuPlatform = ucloud.String(`Intel/Auto`)
+	//
+	req.Disks = []host.UHostDisk{
+				{
+					IsBoot: ucloud.String("true"),
+					Type:   ucloud.String("CLOUD_RSSD"),
+					Size:   ucloud.Int(20),
+				},
+				{
+					IsBoot: ucloud.String("false"),
+					Type:   ucloud.String("CLOUD_RSSD"),
+					Size:   ucloud.Int(20),
+				},
+			}
+	//
+	//	u.Infof("UHostDisk is set success %v", req.Disks)
+    //   req.ImageId = ucloud.String(imageId)
+	//
+	req.MachineType = ucloud.String("O")
+	req.LoginMode = ucloud.String("Password")
+	req.Password = ucloud.String("gauge_auto_test")
+	req.ChargeType = ucloud.String("Dynamic")
+	req.CPU = ucloud.Int(1)
+	req.Memory = ucloud.Int(1024)
+   if u.SecurityGroupId ==""{
+	   req.SecurityGroupId = ucloud.String("345327")
+   }else{
+	   req.SecurityGroupId = ucloud.String(u.SecurityGroupId)
+   }
+	rand.Seed(time.Now().UnixNano())
+	subnet := []string{"subnet-pamsogsq","subnet-2zrg1sfg","subnet-xhmq3mdo","subnet-cg0jc5yc"}[rand.Intn(3)]
+
+	vpc := map[string]string{"subnet-pamsogsq":"uvnet-15i4vykv","subnet-2zrg1sfg":"uvnet-15i4vykv","subnet-xhmq3mdo":"uvnet-15i4vykv","subnet-cg0jc5yc":"uvnet-brq13tlk"}
+
+
+
+
+
+	req.SubnetId = ucloud.String(subnet)
+	if u.SubnetId != ""{
+		req.SubnetId = ucloud.String(u.SubnetId)
+	}
+
+	req.VPCId = ucloud.String(vpc[subnet])
+	if u.VPCId !=""{
+		req.VPCId = ucloud.String(u.VPCId)
+	}
+
+
+	IP := []string{"10.66.144.195","10.66.144.138"}[rand.Intn(2)]
+
+
+	req.HostIp = ucloud.String(IP)
+	if u.HostIp != ""{
+		req.HostIp = ucloud.String(u.HostIp)
+	}
+	req.Name = req.HostIp
+	req.SetId = ucloud.Int(16)
+	if u.SetId != ""{
+		v,_ := strconv.Atoi(u.SetId)
+		req.SetId = ucloud.Int(v)
+	}
+	resp, e := u.uhost.CreateUHostInstance(req)
+	if e != nil {
+		//panic(e)
+		return e
+	}
+
+
+	obj := u.describeHost(resp.UHostIds[0])[0]
+	AddMacGray(obj.IPSet[0].Mac)
+	req2 := u.host.NewModifyUHostInstanceRemarkRequest()
+	req2.UHostId = ucloud.String(resp.UHostIds[0])
+	req2.Remark=&obj.IPSet[0].Mac
+	u.host.ModifyUHostInstanceRemark(req2)
+	u.hosts[resp.UHostIds[0]] = &obj
+	return nil
+}
+
+
+
+type (
 	VpcfeClient struct {
 		*ucloud.Client
 	}
 )
-
-var u *UCloudEnv
-func init(){
-	u = NewUCloudEnv()
-}
 
 
 func NewVPCClient(config *ucloud.Config, credential *auth.Credential) *VpcfeClient {
@@ -50,16 +261,6 @@ func NewVPCClient(config *ucloud.Config, credential *auth.Credential) *VpcfeClie
 		client,
 	}
 }
-
-type  UCloudEnv struct {
-	ulog.Logger
-	cub            *cu.CubeClient
-	cubes          map[string]*PodDetailInfo
-	vpcfego         *VpcfeClient
-	Cliens         map[string]*ssh.Session
-
-}
-
 
 type Params struct{
 	SrcIp string;
@@ -311,80 +512,55 @@ func (u *UCloudEnv) ListCubePod() error {
 		u.cubes[i].CreateTime = v.CreateTime
 		u.cubes[i].RunningTime = v.RunningTime
 	}
-    //var mtex1 sync.WaitGroup
-	//var mloc sync.RWMutex
-	//for _, v := range u.cubes {
-	//	mtex1.Add(1)
-	//
-	//	go func( pod *PodDetailInfo){
-	//		defer mtex1.Done()
-	//		mac, err := u.IGetIpInfoByObject(v.CubeId)
-	//		if err != nil {
-	//			u.Errorf("IGetIpInfoByObject:", err)
-	//		}
-	//		mloc.Lock()
-	//		u.cubes[v.CubeId].Mac = mac
-	//		u.Infof("%v,%v,%v,%v,%v,%v", v.IP, v.CubeId, v.EIP.IP, v.CreateTime, v.RunningTime, mac)
-	//		mloc.Unlock()
-	//	}(v)
-	//
-	//}
+    var mtex1 sync.WaitGroup
+	var mloc sync.RWMutex
+	for _, v := range u.cubes {
+		mtex1.Add(1)
 
-	//mtex1.Wait()
+		go func( pod *PodDetailInfo){
+			defer mtex1.Done()
+			mac, err := u.IGetIpInfoByObject(v.CubeId)
+			if err != nil {
+				u.Errorf("IGetIpInfoByObject:", err)
+			}
+			mloc.Lock()
+			u.cubes[v.CubeId].Mac = mac
+			u.Infof("%v,%v,%v,%v,%v,%v", v.IP, v.CubeId, v.EIP.IP, v.CreateTime, v.RunningTime, mac)
+			mloc.Unlock()
+		}(v)
 
-	//u.Infof("%v,%v,%v,%v", u.cubes)
+	}
 
-	//u.Infof("%v", u.cubes)
-	// gauge.WriteMessage("创建cube%s(%s)", req.SubnetId, resp.CubeId)
+	mtex1.Wait()
 
+	u.Infof("%v,%v,%v,%v", u.cubes)
+
+	u.Infof("%v", u.cubes)
 	return nil
 
 }
 
 
-func NewUCloudEnv() *UCloudEnv {
-	config := ucloud.NewConfig()
-	config.BaseUrl = "http://api.ucloud.cn"
-	config.Region = "cn-sh2"
-	config.Zone =  "cn-sh2-01"
-	config.ProjectId ="org-0x4kng"
-
-	if lvl, e := logrus.ParseLevel("debug"); e != nil {
-		panic(e)
-	} else {
-		config.LogLevel = ulog.Level(lvl)
-	}
-
-	credential := auth.NewCredential()
-	credential.PrivateKey = "EPToanhc560W5FzG1Zbq0QQK3h3kkf7hDOFyCv59SbCj68D9rOKp5sFzern9ULS5"
-	credential.PublicKey = "gik0jB0CNWWgIbHrIr6ig3kIxrc0IoqTvu/huqf9u0ZRxA/8FEFUnxq7zOia8m2g"
-
-
-	u := &UCloudEnv{
-		Logger:       ulog.New(), // ulog.New(),
-		cub:          cu.NewClient(&config,&credential),
-		vpcfego:      NewVPCClient(&config,&credential),
-		cubes:        make(map[string]*PodDetailInfo),
-	}
-	return u
-}
-
-
-
 func CreateCubePod(c *gin.Context ) {
 
-
+	u =  GetInfo(c)
+	u = u.NewUCloudEnv()
 	yamlstr := `YXBpVmVyc2lvbjogdjFiZXRhMQpraW5kOiBQb2QKc3BlYzoKICBjb250YWluZXJzOgogICAgLSBuYW1lOiBjdWJlMDEKICAgICAgaW1hZ2U6ICd1aHViLnNlcnZpY2UudWNsb3VkLmNuL3VjbG91ZC9jZW50b3M3LXNzaDpsYXRlc3QnCiAgICAgIGVudjoKICAgICAgICAtIG5hbWU6IFBBU1NXRAogICAgICAgICAgdmFsdWU6IGdhdWdlX2F1dG9fdGVzdAogICAgICByZXNvdXJjZXM6CiAgICAgICAgbGltaXRzOgogICAgICAgICAgbWVtb3J5OiAxMDI0TWkKICAgICAgICAgIGNwdTogMTAwMG0KICAgICAgdm9sdW1lTW91bnRzOiBbXQogIHZvbHVtZXM6IFtdCiAgcmVzdGFydFBvbGljeTogQWx3YXlzCg==`
 	//
 	req := u.cub.NewCreateCubePodRequest()
 	req.Pod = ucloud.String(yamlstr)
-	req.SubnetId = ucloud.String("subnet-pamsogsq")
+	req.SubnetId = ucloud.String(u.SubnetId)
 	req.Tag = ucloud.String("vpc25")
-	req.VPCId = ucloud.String("uvnet-15i4vykv")
-	req.Zone = ucloud.String("cn-sh2-01")
+	req.VPCId = ucloud.String(u.VPCId)
+	req.Zone = ucloud.String(u.Zone)
+
+	Count ,err1 := strconv.Atoi(u.Count)
+	if err1 !=nil{
+		Count = 5
+	}
 	//更新主机信息
 	var mtx sync.WaitGroup
-	for i:=0;i<10;i++{
+	for i:=0;i<Count;i++{
 		mtx.Add(1)
 		go func(){
 			defer mtx.Done()
@@ -425,9 +601,9 @@ func CreateCubePod(c *gin.Context ) {
 }
 
 
-func FullMesh(c *gin.Context) {
-
-
+func PodFullMesh(c *gin.Context) {
+	u =  GetInfo(c)
+	u = u.NewUCloudEnv()
 	u.ListCubePod()
     var tempArray = make([]string,0)
 	for i,v:=range u.cubes{
@@ -460,7 +636,7 @@ func FullMesh(c *gin.Context) {
 
 			go func(ips []string, res *int){
 			defer mtex.Done()
-			rpc, err := rpc.DialHTTP("tcp","10.2.122.25:8082")
+			rpc, err := rpc.DialHTTP("tcp","106.75.254.85:8082")
 			if err !=nil{
 
 				c.JSON(http.StatusBadRequest, gin.H{
@@ -545,4 +721,264 @@ func FullMesh(c *gin.Context) {
 	return
 
 
+}
+
+func (u *UCloudEnv) WaitHost(id string, state uhost.State) error {
+	req := u.host.NewWaitUntilUHostInstanceStateRequest()
+	req.State = state
+	req.Interval = ucloud.TimeDuration(1 * time.Second)
+	req.MaxAttempts = ucloud.Int(10)
+	req.IgnoreError = ucloud.Bool(true)
+	req.DescribeRequest = u.host.NewDescribeUHostInstanceRequest()
+	req.DescribeRequest.UHostIds = []string{id}
+	if e := u.host.WaitUntilUHostInstanceState(req); e != nil {
+		return e
+	}
+	return nil
+}
+
+func CreateHost(c *gin.Context ) {
+
+	u =  GetInfo(c)
+	u = u.NewUCloudEnv()
+	var mutex sync.WaitGroup
+
+	count := 2
+	if u.Count != ""{
+		var err error
+		count,err = strconv.Atoi(u.Count)
+		if err !=nil{
+			c.JSON(http.StatusBadRequest, gin.H{
+				"message": "Count strconv fail",
+				"ret":-1,
+
+			})
+			return
+		}
+	}
+	//u = NewUCloudEnv()
+	for i:=0;i<count;i++ {
+
+		mutex.Add(1)
+		go func(){
+			defer mutex.Done()
+			u.CreateHost()
+		}()
+	}
+	mutex.Wait()
+	var ips = make([]string,0)
+	for _,v := range u.hosts{
+		mutex.Add(1)
+		go func(addr *uhost.UHostInstanceSet){
+			defer mutex.Done()
+			u.WaitHost(v.UHostId,"Running")
+			ips = append(ips,addr.IPSet[0].IP)
+			//AddMacGray(addr.IPSet[0].Mac)
+			//AddMacFlow(addr.IPSet[0].Mac)
+		}(v)
+	}
+	mutex.Wait()
+
+	rpc1, err := rpc.DialHTTP("tcp","106.75.254.85:8082")
+	if err !=nil{
+		panic(err)
+	}
+
+	var res int
+	err1 := rpc1.Call("VPC25Cube.FullMeshPing", Params{"",ips}, &res)
+	if err1 != nil{
+		panic(err1)
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "CreateHost",
+		"ret":0,
+
+	})
+	return
+}
+
+func AddMacGray(mac string){
+	rand.Seed(time.Now().UnixNano())
+	url := []string{"http://10.66.152.167:8010","http://10.66.152.166:8010","http://10.66.152.165:8010","http://10.66.152.164:8010"}[rand.Intn(4)]
+	method := "POST"
+	payload := strings.NewReader(`{
+    "action":"AddMacGray",
+    "mac":"`+ mac +`"
+	}
+	`)
+	client := &http.Client {
+	}
+	req, err := http.NewRequest(method, url, payload)
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	req.Header.Add("Content-Type", "application/json")
+
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println("add gray",string(body))
+}
+
+func AddMacFlow(mac string){
+	rand.Seed(time.Now().UnixNano())
+	url := []string{"http://10.66.152.155:7010"}
+	method := "POST"
+	payload := strings.NewReader(`{
+    "action":"AddFlow",
+    "mac":"`+ mac +`"
+	}
+	`)
+	client := &http.Client {
+	}
+	req, err := http.NewRequest(method, url[0], payload)
+
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	req.Header.Add("Content-Type", "application/json")
+
+	res, err := client.Do(req)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	defer res.Body.Close()
+
+	body, err := ioutil.ReadAll(res.Body)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println("add gray",string(body))
+}
+
+
+func Gray(c *gin.Context ) {
+
+	u =  GetInfo(c)
+	u = u.NewUCloudEnv()
+	u.ListCubePod()
+
+	var mutex sync.WaitGroup
+
+	for _,v:=range u.cubes {
+
+		mutex.Add(1)
+		go func(){
+			defer mutex.Done()
+			AddMacGray(v.Mac)
+			AddMacFlow(v.Mac)
+		}()
+	}
+	mutex.Wait()
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Gray",
+		"ret":0,
+
+	})
+	return
+}
+
+//func AddGrayForMac(c *gin.Context ) {
+//	AddMacGray("52:54:00:B3:D8:C1")
+//
+//	c.JSON(http.StatusOK, gin.H{
+//		"message": "Gray",
+//		"ret":0,
+//
+//	})
+//	return
+//}
+//func AddFlowForMac(c *gin.Context){
+//	AddMacFlow("52:54:00:B3:D8:C1")
+//
+//	c.JSON(http.StatusOK, gin.H{
+//		"message": "Gray",
+//		"ret":0,
+//
+//	})
+//	return
+//
+//}
+
+
+func GetInfo(c *gin.Context) *UCloudEnv {
+
+
+	var u = &UCloudEnv{}
+	u.ProjectId = c.PostForm("ProjectId")
+	u.VPCId = c.PostForm("VPCId")
+	u.SubnetId = c.PostForm("SubnetId")
+	u.PublicKey = c.PostForm("PublicKey")
+	u.PrivateKey = c.PostForm("PrivateKey")
+	u.SetId = c.PostForm("SetId")
+	u.HostIp = c.PostForm("HostIp")
+	u.SecurityGroupId= c.PostForm("SecurityGroupId")
+	u.ImageId= c.PostForm("ImageId")
+	u.Region= c.PostForm("Region")
+	u.Zone= c.PostForm("Zone")
+	u.Count = c.PostForm("Count")
+
+	fmt.Println("ProjectId: %s; VpcId: %s; SubnetId: %s; Publikey: %s PrivateKey:%s Zone:%s Count：%s HostIp %s", u.ProjectId, u.VPCId, u.SubnetId, u.PublicKey,u.PrivateKey,u.Zone,u.Count,u.HostIp)
+
+	return u
+}
+
+
+func PingHost(c *gin.Context ) {
+
+	u =  GetInfo(c)
+	u = u.NewUCloudEnv()
+	objs := u.describeHost("")
+
+	ips := make([]string,0)
+
+	for _,v:=range objs{
+		ips = append(ips,v.IPSet[0].IP)
+		//AddMacGray(v.IPSet[0].Mac)
+		//AddMacFlow(v.IPSet[0].Mac)
+
+	}
+
+	rpc1, err := rpc.DialHTTP("tcp","106.75.254.85:8082")
+	if err !=nil{
+		//panic(err)
+		c.JSON(http.StatusBadRequest, gin.H{
+			"message": "PingHost",
+			"ret":-1,
+
+		})
+		return
+	}
+
+	var res int
+	err1 := rpc1.Call("VPC25Cube.FullMeshPing", Params{"",ips}, &res)
+	if err1 != nil{
+		c.JSON(http.StatusBadRequest, gin.H{
+			"message": "PingHost",
+			"ret":-1,
+
+		})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"message": "PingHost",
+		"ret":0,
+
+	})
+	return
 }
