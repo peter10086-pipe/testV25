@@ -13,5 +13,7 @@ func main() {
 	//r.GET("/addGray",control.AddFlowForMac)
 	r.POST("/HostFullMesh",control.PingHost)
 	r.POST("/PodFullMesh",control.PodFullMesh)
+	r.POST("/RunPodIperf",control.PodIperf)
+	r.POST("/RunHostIperf",control.HostIperf)
 	r.Run() // listen and serve on 0.0.0.0:8080
 }

@@ -60,6 +60,7 @@ type (
 		PrivateKey      string
 		ProjectId       string
 		Count           string
+		RunCmd          string
 	}
 	TestInfo struct {
 		ulog.Logger
@@ -117,6 +118,8 @@ func (u *UCloudEnv) NewUCloudEnv() *UCloudEnv {
 		PrivateKey  :    u.PrivateKey,
 		ProjectId   :    u.ProjectId,
 		Count      :     u.Count,
+		Zone: 				u.Zone,
+		RunCmd      : u.RunCmd,
 
 	}
 	fmt.Println(u)
@@ -264,6 +267,7 @@ func NewVPCClient(config *ucloud.Config, credential *auth.Credential) *VpcfeClie
 
 type Params struct{
 	SrcIp string;
+	DstIp string
 	Ips  []string
 }
 
@@ -512,26 +516,28 @@ func (u *UCloudEnv) ListCubePod() error {
 		u.cubes[i].CreateTime = v.CreateTime
 		u.cubes[i].RunningTime = v.RunningTime
 	}
-    var mtex1 sync.WaitGroup
-	var mloc sync.RWMutex
-	for _, v := range u.cubes {
-		mtex1.Add(1)
-
-		go func( pod *PodDetailInfo){
-			defer mtex1.Done()
-			mac, err := u.IGetIpInfoByObject(v.CubeId)
-			if err != nil {
-				u.Errorf("IGetIpInfoByObject:", err)
-			}
-			mloc.Lock()
-			u.cubes[v.CubeId].Mac = mac
-			u.Infof("%v,%v,%v,%v,%v,%v", v.IP, v.CubeId, v.EIP.IP, v.CreateTime, v.RunningTime, mac)
-			mloc.Unlock()
-		}(v)
-
-	}
-
-	mtex1.Wait()
+    //var mtex1 sync.WaitGroup
+	//var mloc sync.RWMutex
+	//for _, v := range u.cubes {
+	//	mtex1.Add(1)
+	//
+	//	go func( pod *PodDetailInfo){
+	//		defer mtex1.Done()
+	//		mac, err := u.IGetIpInfoByObject(pod.CubeId)
+	//		if err != nil {
+	//			u.Errorf("IGetIpInfoByObject:", err)
+	//		}
+	//		mloc.Lock()
+	//		u.cubes[pod.CubeId].Mac = mac
+	//		AddMacGray(mac)
+	//		AddMacFlow(mac)
+	//		u.Infof("%v,%v,%v,%v,%v,%v", pod.IP, pod.CubeId, pod.EIP.IP, pod.CreateTime, pod.RunningTime, mac)
+	//		mloc.Unlock()
+	//	}(v)
+	//
+	//}
+	//
+	//mtex1.Wait()
 
 	u.Infof("%v,%v,%v,%v", u.cubes)
 
@@ -547,6 +553,7 @@ func CreateCubePod(c *gin.Context ) {
 	u = u.NewUCloudEnv()
 	yamlstr := `YXBpVmVyc2lvbjogdjFiZXRhMQpraW5kOiBQb2QKc3BlYzoKICBjb250YWluZXJzOgogICAgLSBuYW1lOiBjdWJlMDEKICAgICAgaW1hZ2U6ICd1aHViLnNlcnZpY2UudWNsb3VkLmNuL3VjbG91ZC9jZW50b3M3LXNzaDpsYXRlc3QnCiAgICAgIGVudjoKICAgICAgICAtIG5hbWU6IFBBU1NXRAogICAgICAgICAgdmFsdWU6IGdhdWdlX2F1dG9fdGVzdAogICAgICByZXNvdXJjZXM6CiAgICAgICAgbGltaXRzOgogICAgICAgICAgbWVtb3J5OiAxMDI0TWkKICAgICAgICAgIGNwdTogMTAwMG0KICAgICAgdm9sdW1lTW91bnRzOiBbXQogIHZvbHVtZXM6IFtdCiAgcmVzdGFydFBvbGljeTogQWx3YXlzCg==`
 	//
+	time.Sleep(time.Millisecond*1)
 	req := u.cub.NewCreateCubePodRequest()
 	req.Pod = ucloud.String(yamlstr)
 	req.SubnetId = ucloud.String(u.SubnetId)
@@ -559,6 +566,7 @@ func CreateCubePod(c *gin.Context ) {
 		Count = 5
 	}
 	//更新主机信息
+	var flg bool
 	var mtx sync.WaitGroup
 	for i:=0;i<Count;i++{
 		mtx.Add(1)
@@ -570,13 +578,13 @@ func CreateCubePod(c *gin.Context ) {
 			if err != nil {
 				//return err
 
-				c.JSON(http.StatusBadRequest, gin.H{
-					"retcode": "-1",
-					"message":err.Error(),
-				})
-				return
+				flg =true
 			}
+			if resp.RetCode != 0 {
+				//return err
 
+				flg =true
+			}
 			logStr := fmt.Sprint("创建cube%s(%s)", req.SubnetId, resp.CubeId)
 			fmt.Println(logStr)
 
@@ -593,11 +601,209 @@ func CreateCubePod(c *gin.Context ) {
 	// u.BindEIP(resp.CubeId, "cube", resp.CubeId)
 
 	time.Sleep(time.Second * 2)
+	if flg{
+		c.JSON(http.StatusOK, gin.H{
+			"retcode": "-1",
+			"message":"create fail",
+		})
+		return
+	}else{
+		c.JSON(http.StatusOK, gin.H{
+			"retcode": "0",
+			"message":"create success",
+		})
+		return
+	}
+
+}
+
+
+func PodIperf(c *gin.Context) {
+	u =  GetInfo(c)
+	u = u.NewUCloudEnv()
+	u.ListCubePod()
+
+	//objs := u.describeHost("")
+
+	//ips := make([]string,0)
+	var tempArray = make([]string,0)
+
+	for _,v:=range u.cubes{
+		tempArray = append(tempArray,v.IP)
+		//AddMacGray(v.IPSet[0].Mac)
+		//AddMacFlow(v.IPSet[0].Mac)
+	}
+	//for i,v:=range u.cubes{
+	//	fmt.Println(i,v.IP)
+	//	tempArray = append(tempArray,v.IP)
+	//}
+	ret := 0
+	var mtex sync.WaitGroup
+	rpc, err := rpc.DialHTTP("tcp","106.75.254.85:8082")
+	if err !=nil{
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"retcode": "-1",
+			"message":err.Error(),
+		})
+		return
+	}
+
+	for i, v:= range tempArray {
+		mtex.Add(1)
+		if i < len(tempArray)/2{
+			go func(Sip ,Dip string ,ips []string, res *int){
+				defer mtex.Done()
+				err1 := rpc.Call("VPC25Cube.Iperf", Params{Sip,Dip,ips}, &res)
+
+				if err1 != nil {
+					c.JSON(http.StatusBadRequest, gin.H{
+						"retcode": "-1",
+						"message":err1.Error(),
+					})
+					return
+				}
+				//执行远程调用
+
+			}(v,tempArray[len(tempArray)-1-i],tempArray,&ret)
+
+		}
+
+	}
+
+	mtex.Wait()
+
 	c.JSON(http.StatusOK, gin.H{
-		"retcode": "0",
-		"message":"create success",
+		"message": "pong",
+		"ret":ret,
+
 	})
 	return
+
+
+}
+
+
+//func PodIperf(c *gin.Context) {
+//	u =  GetInfo(c)
+//	u = u.NewUCloudEnv()
+//	u.ListCubePod()
+//    var tempArray = make([]string,0)
+//	for i,v:=range u.cubes{
+//		fmt.Println(i,v.IP)
+//		tempArray = append(tempArray,v.IP)
+//	}
+//	ret := 0
+//	var mtex sync.WaitGroup
+//
+//	for i, v:= range tempArray {
+//			mtex.Add(1)
+//			if i < len(tempArray)/2{
+//				go func(Sip ,Dip string ,ips []string, res *int){
+//					defer mtex.Done()
+//					rpc, err := rpc.DialHTTP("tcp","106.75.254.85:8082")
+//					if err !=nil{
+//
+//						c.JSON(http.StatusBadRequest, gin.H{
+//							"retcode": "-1",
+//							"message":err.Error(),
+//						})
+//						return
+//					}
+//
+//						err1 := rpc.Call("VPC25Cube.ServerIperf", Params{Sip,Dip,ips}, &res)
+//
+//						if err1 != nil {
+//							c.JSON(http.StatusBadRequest, gin.H{
+//								"retcode": "-1",
+//								"message":err1.Error(),
+//							})
+//							return
+//						}
+//						//执行远程调用
+//
+//					}(v,tempArray[len(tempArray)-1-i],tempArray,&ret)
+//
+//			}
+//
+//	}
+//
+//	mtex.Wait()
+//
+//	c.JSON(http.StatusOK, gin.H{
+//		"message": "pong",
+//		"ret":ret,
+//
+//	})
+//	return
+//
+//
+//}
+
+
+func HostIperf(c *gin.Context) {
+	u =  GetInfo(c)
+	u = u.NewUCloudEnv()
+	//u.ListCubePod()
+
+	objs := u.describeHost("")
+
+	//ips := make([]string,0)
+	var tempArray = make([]string,0)
+
+	for _,v:=range objs{
+		tempArray = append(tempArray,v.IPSet[0].IP)
+		//AddMacGray(v.IPSet[0].Mac)
+		//AddMacFlow(v.IPSet[0].Mac)
+	}
+	//for i,v:=range u.cubes{
+	//	fmt.Println(i,v.IP)
+	//	tempArray = append(tempArray,v.IP)
+	//}
+	ret := 0
+	var mtex sync.WaitGroup
+	rpc, err := rpc.DialHTTP("tcp","106.75.254.85:8082")
+	if err !=nil{
+
+		c.JSON(http.StatusBadRequest, gin.H{
+			"retcode": "-1",
+			"message":err.Error(),
+		})
+		return
+	}
+
+	for i, v:= range tempArray {
+		mtex.Add(1)
+		if i < len(tempArray)/2{
+			go func(Sip ,Dip string ,ips []string, res *int){
+				defer mtex.Done()
+				err1 := rpc.Call("VPC25Cube.Iperf", Params{Sip,Dip,ips}, &res)
+
+				if err1 != nil {
+					c.JSON(http.StatusBadRequest, gin.H{
+						"retcode": "-1",
+						"message":err1.Error(),
+					})
+					return
+				}
+				//执行远程调用
+
+			}(v,tempArray[len(tempArray)-1-i],tempArray,&ret)
+
+		}
+
+	}
+
+	mtex.Wait()
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "pong",
+		"ret":ret,
+
+	})
+	return
+
+
 }
 
 
@@ -605,7 +811,7 @@ func PodFullMesh(c *gin.Context) {
 	u =  GetInfo(c)
 	u = u.NewUCloudEnv()
 	u.ListCubePod()
-    var tempArray = make([]string,0)
+	var tempArray = make([]string,0)
 	for i,v:=range u.cubes{
 		fmt.Println(i,v.IP)
 		tempArray = append(tempArray,v.IP)
@@ -623,86 +829,86 @@ func PodFullMesh(c *gin.Context) {
 	//
 	//fmt.Println(string(content))
 	//
-    //tempArray := strings.Split(string(content),"\n")
+	//tempArray := strings.Split(string(content),"\n")
 
 	ret := 0
 	var mtex sync.WaitGroup
-//	for i, v:= range tempArray {
-		mtex.Add(1)
+	//	for i, v:= range tempArray {
+	mtex.Add(1)
 
 	//	fmt.Println("current ip:",i,v)
 
-			//初始化远程
+	//初始化远程
 
-			go func(ips []string, res *int){
-			defer mtex.Done()
-			rpc, err := rpc.DialHTTP("tcp","106.75.254.85:8082")
-			if err !=nil{
+	go func(ips []string, res *int){
+		defer mtex.Done()
+		rpc, err := rpc.DialHTTP("tcp","106.75.254.85:8082")
+		if err !=nil{
 
-				c.JSON(http.StatusBadRequest, gin.H{
-					"retcode": "-1",
-					"message":err.Error(),
-				})
-			}
+			c.JSON(http.StatusBadRequest, gin.H{
+				"retcode": "-1",
+				"message":err.Error(),
+			})
+		}
 
-				err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{"",ips}, &res)
+		err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{"","",ips}, &res)
 
-				if err1 != nil {
-					c.JSON(http.StatusBadRequest, gin.H{
-						"retcode": "-1",
-						"message":err1.Error(),
-					})
-				}
-				//执行远程调用
+		if err1 != nil {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"retcode": "-1",
+				"message":err1.Error(),
+			})
+		}
+		//执行远程调用
 
-			}(tempArray,&ret)
-		//case 1:
-		//	go func(ip string,ips []string, res *int){
-		//		defer mtex.Done()
-		//		rpc, err := rpc.DialHTTP("tcp","10.2.202.109:8082")
-		//		if err !=nil{
-		//
-		//			c.JSON(http.StatusBadRequest, gin.H{
-		//				"retcode": "-1",
-		//				"message":err.Error(),
-		//			})
-		//		}
-		//
-		//		err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{ip,ips}, &res)
-		//
-		//		if err1 != nil {
-		//			c.JSON(http.StatusBadRequest, gin.H{
-		//				"retcode": "-1",
-		//				"message":err1.Error(),
-		//			})
-		//		}
-		//		//执行远程调用
-		//
-		//	}(v,tempArray,&ret)
-		//case 2:
-		//	go func(ip string,ips []string, res *int){
-		//		defer mtex.Done()
-		//		rpc, err := rpc.DialHTTP("tcp","10.2.7.222:8082")
-		//		if err !=nil{
-		//
-		//			c.JSON(http.StatusBadRequest, gin.H{
-		//				"retcode": "-1",
-		//				"message":err.Error(),
-		//			})
-		//		}
-		//
-		//		err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{ip,ips}, &res)
-		//
-		//		if err1 != nil {
-		//			c.JSON(http.StatusBadRequest, gin.H{
-		//				"retcode": "-1",
-		//				"message":err1.Error(),
-		//			})
-		//		}
-		//		//执行远程调用
-		//
-		//	}(v,tempArray,&ret)
-		//}
+	}(tempArray,&ret)
+	//case 1:
+	//	go func(ip string,ips []string, res *int){
+	//		defer mtex.Done()
+	//		rpc, err := rpc.DialHTTP("tcp","10.2.202.109:8082")
+	//		if err !=nil{
+	//
+	//			c.JSON(http.StatusBadRequest, gin.H{
+	//				"retcode": "-1",
+	//				"message":err.Error(),
+	//			})
+	//		}
+	//
+	//		err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{ip,ips}, &res)
+	//
+	//		if err1 != nil {
+	//			c.JSON(http.StatusBadRequest, gin.H{
+	//				"retcode": "-1",
+	//				"message":err1.Error(),
+	//			})
+	//		}
+	//		//执行远程调用
+	//
+	//	}(v,tempArray,&ret)
+	//case 2:
+	//	go func(ip string,ips []string, res *int){
+	//		defer mtex.Done()
+	//		rpc, err := rpc.DialHTTP("tcp","10.2.7.222:8082")
+	//		if err !=nil{
+	//
+	//			c.JSON(http.StatusBadRequest, gin.H{
+	//				"retcode": "-1",
+	//				"message":err.Error(),
+	//			})
+	//		}
+	//
+	//		err1 := rpc.Call("VPC25Cube.FullMeshPing", Params{ip,ips}, &res)
+	//
+	//		if err1 != nil {
+	//			c.JSON(http.StatusBadRequest, gin.H{
+	//				"retcode": "-1",
+	//				"message":err1.Error(),
+	//			})
+	//		}
+	//		//执行远程调用
+	//
+	//	}(v,tempArray,&ret)
+	//}
 
 
 	//}
@@ -773,22 +979,22 @@ func CreateHost(c *gin.Context ) {
 			defer mutex.Done()
 			u.WaitHost(v.UHostId,"Running")
 			ips = append(ips,addr.IPSet[0].IP)
-			//AddMacGray(addr.IPSet[0].Mac)
-			//AddMacFlow(addr.IPSet[0].Mac)
+			AddMacGray(addr.IPSet[0].Mac)
+			AddMacFlow(addr.IPSet[0].Mac)
 		}(v)
 	}
 	mutex.Wait()
 
-	rpc1, err := rpc.DialHTTP("tcp","106.75.254.85:8082")
-	if err !=nil{
-		panic(err)
-	}
-
-	var res int
-	err1 := rpc1.Call("VPC25Cube.FullMeshPing", Params{"",ips}, &res)
-	if err1 != nil{
-		panic(err1)
-	}
+	//rpc1, err := rpc.DialHTTP("tcp","106.75.254.85:8082")
+	//if err !=nil{
+	//	panic(err)
+	//}
+	//
+	//var res int
+	//err1 := rpc1.Call("VPC25Cube.FullMeshPing", Params{"",ips}, &res)
+	//if err1 != nil{
+	//	panic(err1)
+	//}
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "CreateHost",
@@ -932,8 +1138,9 @@ func GetInfo(c *gin.Context) *UCloudEnv {
 	u.Region= c.PostForm("Region")
 	u.Zone= c.PostForm("Zone")
 	u.Count = c.PostForm("Count")
+	u.RunCmd = c.PostForm("Shell")
 
-	fmt.Println("ProjectId: %s; VpcId: %s; SubnetId: %s; Publikey: %s PrivateKey:%s Zone:%s Count：%s HostIp %s", u.ProjectId, u.VPCId, u.SubnetId, u.PublicKey,u.PrivateKey,u.Zone,u.Count,u.HostIp)
+	fmt.Printf("ProjectId: %s; VpcId: %s; SubnetId: %s; Publikey: %s PrivateKey:%s Zone:%s Count：%s HostIp %s Shell %s", u.ProjectId, u.VPCId, u.SubnetId, u.PublicKey,u.PrivateKey,u.Zone,u.Count,u.HostIp,u.RunCmd)
 
 	return u
 }
@@ -966,7 +1173,7 @@ func PingHost(c *gin.Context ) {
 	}
 
 	var res int
-	err1 := rpc1.Call("VPC25Cube.FullMeshPing", Params{"",ips}, &res)
+	err1 := rpc1.Call("VPC25Cube.FullMeshPing", Params{"","",ips}, &res)
 	if err1 != nil{
 		c.JSON(http.StatusBadRequest, gin.H{
 			"message": "PingHost",
